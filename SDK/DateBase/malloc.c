@@ -15,3 +15,15 @@ void *zmalloc(size_t size)
     
     return (char*)ptr+PREFIX_SIZE;
 }
+
+void *zfree(void *ptr)
+{
+    if(NULL == ptr)
+    {
+        return NULL;
+    }
+
+    free(ptr);
+    ptr = NULL;
+    return ptr;
+}

@@ -11,5 +11,5 @@
  */
 void *zmalloc(size_t size);
 
-
+void *zfree(void *ptr);
 #endif
