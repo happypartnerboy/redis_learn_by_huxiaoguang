@@ -16,6 +16,7 @@ CFLAGS+= -Wall -W -Wpointer-arith -Wcast-qual
 LDFLAGS+= -lDateBase
 #所需要的库
 #LIBPATH+= -L../../../../bin/lib -Wl,-rpath,./lib
+#LIBPATH+=-L../../lib_35xxD-static
 LIBPATH+=-L../../lib_35xxD-static
 #表示连接路径
 INCLUDES+=-I ../
