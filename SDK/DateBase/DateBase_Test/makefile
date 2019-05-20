@@ -31,22 +31,13 @@ OBJECTS+=$(patsubst %.cpp, %.o, $(wildcard *.cpp))
 
 .PHONY:clean test
 
-
-
-
-
-
-
-
-	
-
 $(BIN):$(OBJECTS)
-	$(CPP) -o $@ $^ $(LDFLAGS) $(LIBPATH) $(CFLAGS)
+	$(CC) -o $@ $^ $(LDFLAGS) $(LIBPATH) $(CFLAGS)
 
 %.o:%.cpp
 	$(CPP) -c $^ -o $@ $(CFLAGS) $(INCLUDES) 
 %.o:%.cpp
-	$(CPP) -c $^ -o $@ $(CFLAGS) $(INCLUDES)
+	$(CC) -c $^ -o $@ $(CFLAGS) $(INCLUDES)
 
 clean:
 	$(RM) ${OBJECTS} ${BIN} 

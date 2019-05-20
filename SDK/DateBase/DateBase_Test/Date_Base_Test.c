@@ -23,6 +23,7 @@ int main()
     return 0;
 }
 */
+/*
 #include<stdio.h>
 #include<string.h>
 #include "../adlist.h"
@@ -56,3 +57,109 @@ int main()
     listRelease(LPtest);
     return 0;
 }
+*/
+
+#include <stdio.h>
+#include "../dict.h"
+#include <strings.h>
+#include <stdlib.h>
+//计算hash函数
+unsigned int dictSdsHash(const void *key) {
+    return dictGenHashFunction((unsigned char*)key, strlen((char*)key));
+}
+
+void sdsfree(char* s) {
+    if (s == NULL) 
+		return;
+    free(s);
+}
+
+//
+int dictSdsKeyCompare(void *privdata, const void *key1,
+        const void *key2)
+{
+ 
+    return strcasecmp(key1, key2) == 0;
+}
+
+static void dictSdsDestructor(void *privdata, void *val)
+{
+	printf("hello word\n");
+//  free(val);
+}
+
+static dictType Dicttest = 
+{
+    dictSdsHash,                /* hash function */
+    NULL,                       /* key dup */
+    NULL,                       /* val dup */
+    dictSdsKeyCompare,          /* key compare */
+	dictSdsDestructor,          /* key destructor */
+    NULL                        /* val destructor */
+};
+
+
+int main()
+{
+	//创建 hasi
+	dict  * pdicttest  = NULL;	
+	dictEntry  * pdictEntry = NULL; //获取value
+	//申请一个hash
+	pdicttest = dictCreate(&Dicttest, NULL);
+
+	//添加数据
+	/*
+		hu  	2
+		yang	3
+		xiao	4
+	*/
+	dictAdd(pdicttest, "hu", 2);
+	dictAdd(pdicttest, "yang", 3);
+	dictAdd(pdicttest, "xiao", 4);
+	printf("size = %d used = %d\n",pdicttest->size , pdicttest->used);
+		
+	
+	//查找数据
+	pdictEntry = dictFind(pdicttest, "hu");
+	if(NULL == pdictEntry)
+	{
+		printf("1_error\n");
+		return 0;
+	}
+	printf("%s %d\n",pdictEntry->key , pdictEntry->val);
+	
+	pdictEntry = dictFind(pdicttest, "yang");
+	if(NULL == pdictEntry)
+	{
+		printf("2_error\n");
+		return 0;
+	}
+	printf("%s %d\n",pdictEntry->key , pdictEntry->val);
+	
+	pdictEntry = dictFind(pdicttest, "xiao");
+	if(NULL == pdictEntry)
+	{
+		printf("2_error\n");
+		return 0;
+	}
+	printf("%s %d\n",pdictEntry->key , pdictEntry->val);
+	
+	
+	//删除数据
+	dictDelete(&pdicttest, "huxiaoguang");
+	printf("size = %d used = %d\n",pdicttest->size , pdicttest->used);
+	return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

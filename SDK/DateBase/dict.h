@@ -38,25 +38,28 @@
 
 #define DICT_OK 0
 #define DICT_ERR 1
-
+//æ³¨æ„å†…å­˜çš„ä½¿ç”¨æƒ…å†µ
 /* Unused arguments generate annoying warnings... */
 #define DICT_NOTUSED(V) ((void) V)
 
+//å“ˆå¸Œæ•°æ®ç»“æž„
 typedef struct dictEntry {
     void *key;
     void *val;
     struct dictEntry *next;
 } dictEntry;
 
+//ç›¸å…³æ“ä½œå‡½æ•°
 typedef struct dictType {
-    unsigned int (*hashFunction)(const void *key);
-    void *(*keyDup)(void *privdata, const void *key);
-    void *(*valDup)(void *privdata, const void *obj);
-    int (*keyCompare)(void *privdata, const void *key1, const void *key2);
-    void (*keyDestructor)(void *privdata, void *key);
-    void (*valDestructor)(void *privdata, void *obj);
+    unsigned int (*hashFunction)(const void *key);						//¼ÆËãhashµÄº¯Êý
+    void *(*keyDup)(void *privdata, const void *key);						//¸´ÖÆ¼üº¯Êý
+    void *(*valDup)(void *privdata, const void *obj);						//¸´ÖÆÖµº¯Êý
+    int (*keyCompare)(void *privdata, const void *key1, const void *key2);	//¶Ô±È¼üº¯Êý
+    void (*keyDestructor)(void *privdata, void *key);					//Ïú»Ù¼üº¯Êý
+    void (*valDestructor)(void *privdata, void *obj);						//Ïú»ÙÖµº¯Êý
 } dictType;
 
+//å“ˆå¸Œå­—å…¸
 typedef struct dict 
 {
     dictEntry **table;
@@ -67,12 +70,12 @@ typedef struct dict
     void *privdata;
 } dict;
 
+
 typedef struct dictIterator {
     dict *ht;
     int index;
     dictEntry *entry, *nextEntry;
 } dictIterator;
-
 /* This is the initial size of every hash table */
 #define DICT_HT_INITIAL_SIZE     4
 
@@ -104,6 +107,10 @@ typedef struct dictIterator {
         (ht)->type->keyCompare((ht)->privdata, key1, key2) : \
         (key1) == (key2))
 
+
+//¹þÏ£º¯Êý
+unsigned int dictGenHashFunction(const unsigned char *buf, int len) ;
+
 #define dictHashKey(ht, key) (ht)->type->hashFunction(key)
 
 #define dictGetEntryKey(he) ((he)->key)
@@ -112,16 +119,32 @@ typedef struct dictIterator {
 #define dictSize(ht) ((ht)->used)
 
 /* API */
-static unsigned int dictGenHashFunction(const unsigned char *buf, int len);
-static dict *dictCreate(dictType *type, void *privDataPtr);
-static int dictExpand(dict *ht, unsigned long size);
-static int dictAdd(dict *ht, void *key, void *val);
-static int dictReplace(dict *ht, void *key, void *val);
-static int dictDelete(dict *ht, const void *key);
-static void dictRelease(dict *ht);
-static dictEntry * dictFind(dict *ht, const void *key);
-static dictIterator *dictGetIterator(dict *ht);
-static dictEntry *dictNext(dictIterator *iter);
-static void dictReleaseIterator(dictIterator *iter);
+//´´½¨Ò»¸ö
+dict *dictCreate(dictType *type, void *privDataPtr);
+
+//Ìí¼ÓKEYºÍvalue Ìí¼ÓÒ»¸öÔªËØµ½hash tableÖÐ
+int dictAdd(dict *ht, void *key, void *val);
+
+int dictExpand(dict *ht, unsigned long size);
+
+int dictReplace(dict *ht, void *key, void *val);
+
+
+int dictDelete(dict *ht, const void *key);
+
+//ÊÍ·Åht
+void dictRelease(dict *ht);
+
+
+dictEntry * dictFind(dict *ht, const void *key);
+
+
+dictIterator *dictGetIterator(dict *ht);
+
+
+dictEntry *dictNext(dictIterator *iter);
+
+
+void dictReleaseIterator(dictIterator *iter);
 
 #endif /* __DICT_H */
