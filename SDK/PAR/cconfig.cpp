@@ -34,9 +34,9 @@ struct CConfig::tagSection
 	struct tagKey
 	{
 	  public:
-		char *m_strName;
-		char *m_strValue;
-		  tagKey():m_strName(NULL), m_strValue(NULL)
+        char *m_strName;
+        char *m_strValue;
+        tagKey():m_strName(NULL), m_strValue(NULL)
 		{
 		};
 
@@ -48,6 +48,7 @@ struct CConfig::tagSection
 				free(m_strName);
 				m_strName = NULL;
 			}
+
 			if (m_strValue != NULL)
 			{
 				free(m_strValue);
@@ -187,8 +188,8 @@ struct CConfig::tagSection
 int CConfig::LoadIniFile(const char *pszFileName)
 {
     //加载数据
-#if 0
     FILE *fp;
+    int ret = -1;
 	if (NULL == pszFileName)
 	{
 		//写debug日志,错误的参数
@@ -214,15 +215,36 @@ int CConfig::LoadIniFile(const char *pszFileName)
 	//创建文件
     m_nSectionCount = 0;
 	m_pSection = NULL;
-	/* we allocate 15 sections first */
-	//m_pSection = new tagSection[max_sect_nr];
 	tagSection tSect;
     
-    //Need to do 
-#endif
+    //Need to do  读取一段
+    while (0 == (ret = ReadIniSection(fp, &tSect)))
+    {
+        
+     
+        for(int i = 0; i < tSect.m_nKeyCount; i++)
+        {
+            
+            CConfig::tagSection::tagKey *p = tSect.m_pKeyHead + i;             //节点      
+
+        }
+
+		tSect.m_strName = NULL;
+		tSect.m_pKeyHead = NULL;
+		tSect.m_nKeyCount = 0;
+		tSect.m_nKeyAlloced = 0;
+		if (feof(fp))	//文件达到末尾
+		{
+			return 0;
+		}
+    }
+
     return 0;
 }
 
+/*
+    读取一段
+*/
 int CConfig::ReadIniSection(FILE * fp, tagSection * pSect)
 {
     if ((NULL == fp) || (NULL == pSect))
@@ -320,7 +342,7 @@ int CConfig::ReadIniSection(FILE * fp, tagSection * pSect)
 	return 0;
 }
 
-
+//读取名称
 int CConfig::GetIniSectionName(char **strSectionName, char *szBuf)
 {
     char *current = NULL;
@@ -413,6 +435,7 @@ int CConfig::GetIniSectionName(char **strSectionName, char *szBuf)
     return 0;
 }
 
+//读取key 和 val
 int CConfig::GetIniKey(char *szBuf, char **pszKeyName, char **pszKeyValue)
 {
     char *current = NULL;

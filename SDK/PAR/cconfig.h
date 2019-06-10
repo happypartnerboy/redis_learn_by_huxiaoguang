@@ -18,7 +18,7 @@ private:
 	//!\param szBuf 一行字符串
 	//!\return 0表示获取成功,其他表示获取失败
 	int GetIniSectionName(char **strSectionName, char *szBuf);
-	
+
 	//!\brief 从配置文件的一行获取key名称和值
 	//!\param szBuf 一行字符串
 	//!\param pszKey key名字符串缓冲区指针
@@ -27,8 +27,11 @@ private:
 	int GetIniKey(char *szBuf, char **pszKeyName, char **pszKeyValue);
 
 private:
-	int m_nCurrentLine;
+	int m_nCurrentLine;				//当前行号
 
+
+	tagSection *m_pSection;			//section 
+	int m_nSectionCount;			//section 大小
+	int m_nSectionAlloced;			//已经分配的内存空间
 };
-
 #endif
