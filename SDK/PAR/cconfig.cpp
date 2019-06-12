@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "cconfig.h"
+
 #define PAR_DBG(x...)
 #define PAR_ERROR(x...)
 //!\brief 第一次分配section的个数
@@ -28,6 +29,7 @@
 //#error
 #define IDVR_ERROR_ALLOC (-1)
 #define IDVR_PAR_ERROR_INVALID_FORMAT (-1) 
+pthread_mutex_t CConfig::m_mtxConfig = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 struct CConfig::tagSection
 {
   public:
@@ -220,25 +222,70 @@ int CConfig::LoadIniFile(const char *pszFileName)
     //Need to do  读取一段
     while (0 == (ret = ReadIniSection(fp, &tSect)))
     {
-        
-     
-        for(int i = 0; i < tSect.m_nKeyCount; i++)
-        {
-            
-            CConfig::tagSection::tagKey *p = tSect.m_pKeyHead + i;             //节点      
+		//读取数据
+        if (tSect.m_strName != NULL)
+		{
+			//添加新的section，或者指向所需要的位置
+			tagSection *pCurSection = AddSection();
+			//内存分配失败
+			if (pCurSection == NULL)
+			{
+				if (m_pSection != NULL)
+				{
+					free(m_pSection);
+					m_pSection = NULL;
+				}
+				PAR_ERROR("Add Section Failed, Can not Allocate Memory\n");
+				fclose(fp);
+				return IDVR_ERROR_ALLOC;
+			}
+			m_nSectionCount++;
+			pCurSection->m_strName = tSect.m_strName;
+			pCurSection->m_pKeyHead = tSect.m_pKeyHead;
+			pCurSection->m_nKeyCount = tSect.m_nKeyCount;
+			pCurSection->m_nKeyAlloced = tSect.m_nKeyAlloced;
+			tSect.m_strName = NULL;
+			tSect.m_pKeyHead = NULL;
+			tSect.m_nKeyCount = 0;
+			tSect.m_nKeyAlloced = 0;
 
-        }
 
-		tSect.m_strName = NULL;
-		tSect.m_pKeyHead = NULL;
-		tSect.m_nKeyCount = 0;
-		tSect.m_nKeyAlloced = 0;
+		}
 		if (feof(fp))	//文件达到末尾
 		{
-			return 0;
+			break;
 		}
     }
 
+	if (m_strFile != NULL)
+	{
+		free(m_strFile);
+		m_strFile = NULL;
+	}
+
+	if ((0 == ret))
+	{
+		m_strFile = strdup(pszFileName);
+	}
+	
+	fclose(fp);
+	#if 0
+	printf("***************start*************\n");
+	printf("m_strFile = %s\n",m_strFile);
+	for (int i = 0; i < m_nSectionCount; i++)
+	{
+		tagSection *p = m_pSection + i;
+		printf("************config start p->m_strName=%s******\n",p->m_strName);
+		for(int j = 0; j < p->m_nKeyCount;j++)
+		{
+			CConfig::tagSection::tagKey*temp =  p->m_pKeyHead + j;
+			
+			printf("temp->m_strName = %s temp->m_strValue = %s\n",temp->m_strName,temp->m_strValue);
+		}
+		printf("************config start p->m_strName=%s******\n",p->m_strName);
+	}	
+	printf("****************end*********\n");
+	#endif
     return 0;
 }
 
@@ -531,4 +578,270 @@ int CConfig::GetIniKey(char *szBuf, char **pszKeyName, char **pszKeyValue)
 		*pszKeyValue = value;
 	}
     return 0;
+}
+
+CConfig::tagSection * CConfig::AddSection()
+{
+	int max_sect_nr = DEF_SEC_NUM;
+
+	if (m_nSectionCount != 0)
+	{
+		if ((m_nSectionCount+1) > m_nSectionAlloced)
+		{
+			max_sect_nr = m_nSectionAlloced + ADD_SEC_NUM;	//需要重新分配内存
+			m_pSection = (tagSection *) realloc(m_pSection, sizeof (tagSection) * max_sect_nr);
+			m_nSectionAlloced = max_sect_nr;
+		}
+		else
+		{
+			// 无需分配内存
+		}
+	}
+	else						//空section
+	{
+		//一般应为NULL
+		if (m_pSection != NULL)
+		{
+			free(m_pSection);
+			m_pSection = NULL;
+		}
+		//初始分配的DEF_SEC_NUM个section的空间
+		m_pSection = (tagSection *) malloc(sizeof (tagSection) * max_sect_nr /*DEF_SEC_NUM */ );
+		m_nSectionAlloced = max_sect_nr;
+	}
+	if (NULL == m_pSection)//分配空间失败
+	{
+		return NULL;
+	}
+	tagSection *pSection = m_pSection + m_nSectionCount;
+
+	//设置初始值,避免错误的读写内存
+	pSection->m_strName = NULL;
+	pSection->m_nKeyCount = 0;
+	pSection->m_pKeyHead = NULL;
+	//cout << "Section Count " << m_nSectionCount << endl;
+	return pSection;
+}
+
+int CConfig::GetValue(const char *pszSection, const char *pszKey, int nDefault)
+{
+//	TODO: Add your specialized code here.
+	char *ret;
+	char szBuff[51];
+	char szDefault[51];
+	int nResult = nDefault;
+
+	sprintf(szDefault, "%d", nDefault);
+
+	//获取key的字符串值
+	ret = GetValue(pszSection, pszKey, szDefault, szBuff, 50);
+	if (ret == NULL)
+	{
+		return nResult;			//nDefault
+	}
+	//转换成整型值
+	nResult = strtol(szBuff, NULL, 0);
+	//检查是否有错误
+	//但是如果字符串为"abcd" nResult = 0检查不出错误
+//	if (((LONG_MIN == nResult) || (LONG_MAX == nResult)) && (ERANGE == errno))
+	{
+	//	nResult = nDefault;
+	}
+
+	return (int) nResult;
+
+}
+int CConfig::GetValue(const char *pszSection, const char *pszKey, char* pStr, int strLen)
+{
+	char *ret;
+	char szBuff[51];
+	char szDefault[51];
+	int nResult = 0;
+	int len = strLen > 50 ? 50 : strLen;
+
+	sprintf(szDefault, "%d", nResult);
+
+	//获取key的字符串值
+	ret = GetValue(pszSection, pszKey, szDefault, szBuff, 50);
+	if (ret == NULL)
+	{
+		return nResult;			//nDefault
+	}
+
+	strncpy(pStr, szBuff, len);
+
+	return nResult;
+}
+
+char *CConfig::GetValue(const char *pszSection, const char *pszKey, const char *pszDefault, char *pValue, int nSize)
+{
+	char *pResult = NULL;
+	Lock();
+	pResult = InternalGetValue(pszSection, pszKey, pszDefault, pValue, nSize);
+	Unlock();
+	return pResult;
+}
+
+CConfig::CConfig():hCfg(NULL), m_strFile(NULL), m_pSection(NULL), m_nSectionCount(0), m_nSectionAlloced(0)
+{
+}
+
+inline int CConfig::Lock()
+{
+	return pthread_mutex_lock(&m_mtxConfig);
+}
+
+inline int CConfig::Unlock()
+{
+	return pthread_mutex_unlock(&m_mtxConfig);
+}
+
+//获取 pValue 已经拷贝了
+char *CConfig::InternalGetValue(const char *pszSection, const char *pszKey, const char *pszDefault, char *pValue, int nSize)
+{
+	if ((NULL == pValue) || (nSize <= 0) || (NULL == pszSection) || (0 == strlen(pszSection)) || (NULL == pszKey) || (0 == strlen(pszKey)))
+	{
+		return NULL;
+	}
+
+	char *pResult = NULL;
+
+	CConfig::tagSection::tagKey * pKey = NULL;
+
+	tagSection *pSection = SearchSection(pszSection);
+
+	//没找到section,添加一个section
+	if (pSection == NULL)
+	{
+		pSection = InsertSection();
+		if (NULL == pSection)
+		{
+			return NULL;
+		}
+		pSection->m_strName = strdup(pszSection);//拷贝了内存
+		m_nSectionCount++;
+		m_iCfgDataChanged = 1;
+	}
+	
+	pKey = pSection->SearchKey(pszKey);
+
+	//没找到key添加一个key
+	char *pKeyName = NULL;
+	char *pKeyValue = NULL;
+
+	if (NULL == pKey)		//没有则创建一个
+	{
+		pKeyName = strdup(pszKey);
+		if (NULL == pKeyName)
+		{
+			return NULL;	//内存不足
+		}
+
+		pKey = pSection->AddKey();
+		if (NULL == pKey)			//添加key失败
+		{
+			free(pKeyName);
+			pKeyName = NULL;
+			return NULL;
+		}
+		pKey->m_strName = pKeyName;
+
+		if (pszDefault != NULL)
+		{
+			pKeyValue = strdup(pszDefault);
+		}
+		else
+		{
+			pKeyValue = strdup("");
+		}
+		
+		if (NULL == pKeyValue)
+		{
+			if (pKeyName != NULL)
+			{
+				free(pKeyName);
+				pKeyName = NULL;
+			}
+			return NULL;
+		}
+
+		pKey->m_strValue = pKeyValue;
+		m_iCfgDataChanged = 1;		//保存到文件中
+	}
+		
+	if (nSize > 0)
+	{
+		//PAR_DBG("Get the Key %s\n", pKey->m_strName);
+		strncpy(pValue, pKey->m_strValue, nSize - 1);
+		pValue[nSize - 1] = '\0';
+
+		pResult = pValue;
+	}
+	//PAR_DBG("Get pResult:%s\n", pResult);
+
+	return pResult;
+}
+
+CConfig::tagSection * CConfig::SearchSection(const char *pszSection)
+{
+	tagSection *pSect = NULL;
+	int i = 0;
+
+	if (NULL == pszSection)
+	{
+		return NULL;
+	}
+	for (i = 0; i < m_nSectionCount; i++)
+	{
+		pSect = m_pSection + i;
+		if (0 == strcmp(pSect->m_strName, pszSection))
+		{
+			break;
+		}
+	}
+	if (i >= m_nSectionCount)
+	{
+		pSect = NULL;
+	}
+	return pSect;
+}
+
+CConfig::tagSection * CConfig::InsertSection()
+{
+	int max_sect_nr = DEF_SEC_NUM;
+
+	if (m_nSectionCount != 0)
+	{
+		//计算是否需要增加内存空间
+		if ((m_nSectionCount+1) > m_nSectionAlloced)
+		{
+			max_sect_nr = m_nSectionAlloced + ADD_SEC_NUM;	//需要重新分配内存
+			m_pSection = (tagSection *) realloc(m_pSection, sizeof (tagSection) * max_sect_nr);
+			m_nSectionAlloced = max_sect_nr;
+		}
+		else
+		{
+			// 无需分配内存
+		}
+	}
+	else//没有起始节点，出错
+	{
+		return NULL;
+	}
+
+	tagSection *pEndSection = m_pSection + m_nSectionCount;
+	tagSection *pSection = m_pSection + m_nSectionCount - 1;
+
+	//设置初始值,避免错误的读写内存
+	pEndSection->m_strName = pSection->m_strName;
+	pEndSection->m_nKeyCount = pSection->m_nKeyCount;
+	pEndSection->m_pKeyHead = pSection->m_pKeyHead;
+	pEndSection->m_nKeyAlloced = pSection->m_nKeyAlloced;
+
+	pSection->m_strName = NULL;
+	pSection->m_nKeyCount = 0;
+	pSection->m_pKeyHead = NULL;
+	pSection->m_nKeyAlloced = 0;
+	//cout << "Section Count " << m_nSectionCount << endl;
+	return pSection;
 }
