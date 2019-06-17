@@ -42,10 +42,10 @@ $(RELEASE_TARGET):$(addprefix $(RELEASE_DIR)/,$(OBJECTS))
 	$(INSTALL) $@ ${LIBDIR} 
 	
 $(RELEASE_DIR)/%.o:%.c
-	$(CC) -c $^ -o $@ $(RFLAGS) $(INCPATH)
+	$(CC) -c $^ -o $@ $(RFLAGS) $(INCPATH) $(LFLAGS)
 
 $(RELEASE_DIR)/%.o:%.cpp
-	$(CXX) -c $^ -o $@ $(RFLAGS) $(INCPATH)
+	$(CXX) -c $^ -o $@ $(RFLAGS) $(INCPATH) $(LFLAGS)
 
 #将所有库安装
 
