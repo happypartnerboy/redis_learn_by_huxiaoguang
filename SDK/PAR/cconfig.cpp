@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "cconfig.h"
+#include <pthread.h>
 
 #define PAR_DBG(x...)
 #define PAR_ERROR(x...)
@@ -29,7 +30,13 @@
 //#error
 #define IDVR_ERROR_ALLOC (-1)
 #define IDVR_PAR_ERROR_INVALID_FORMAT (-1) 
+
+
+
 pthread_mutex_t CConfig::m_mtxConfig = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+pthread_t CConfig::m_SaveFileThread = (pthread_t)NULL;
+pthread_mutex_t CConfig::m_mtxSaveFile =  PTHREAD_MUTEX_INITIALIZER;
+
 struct CConfig::tagSection
 {
   public:
@@ -643,14 +650,105 @@ int CConfig::GetValue(const char *pszSection, const char *pszKey, int nDefault)
 	nResult = strtol(szBuff, NULL, 0);
 	//检查是否有错误
 	//但是如果字符串为"abcd" nResult = 0检查不出错误
-//	if (((LONG_MIN == nResult) || (LONG_MAX == nResult)) && (ERANGE == errno))
-	{
-	//	nResult = nDefault;
-	}
-
 	return (int) nResult;
 
 }
+
+int CConfig::SetValue(const char *pszSection, const char *pszKey, int nValue)
+{
+	// TODO: Add your specialized code here.
+	char szBuf[100];
+
+	sprintf(szBuf, "%d", nValue);
+	return SetValue(pszSection, pszKey, szBuf);
+}
+
+int CConfig::SetValue(const char *pszSection, const char *pszKey, const char *pValue)
+{
+	int nResult = 0;
+	Lock();
+	nResult = InternalSetValue(pszSection, pszKey, pValue);
+	Unlock();
+	return nResult;
+}
+
+int CConfig::InternalSetValue(const char *pszSection, const char *pszKey, const char *pValue)
+{
+	if ((NULL == pValue) || (NULL == pszSection) || (0 == strlen(pszSection)) || (NULL == pszKey) || (0 == strlen(pszKey)))
+	{
+		return -1;
+	}
+
+	CConfig::tagSection::tagKey * pKey = NULL;
+
+	//查找section
+	tagSection *pSection = SearchSection(pszSection);
+
+	//没找到section,添加一个section
+	if (pSection == NULL)
+	{
+		pSection = InsertSection();
+		if (NULL == pSection)
+		{
+			return -1;
+		}
+		pSection->m_strName = strdup(pszSection);
+		m_nSectionCount++;
+		m_iCfgDataChanged = 1;	//添加 section 已成功
+	}
+
+	pKey = pSection->SearchKey(pszKey);
+	//没找到key添加一个key
+	char *pKeyName = NULL;
+	char *pKeyValue = NULL;
+
+	if (NULL == pKey)
+	{
+		pKeyName = strdup(pszKey);
+		if (NULL == pKeyName)
+		{
+			return -1;	//内存不足
+		}
+
+		pKey = pSection->AddKey();
+		
+		if (NULL == pKey)			//添加key失败
+		{
+			free(pKeyName);
+			pKeyName = NULL;
+			return -1;
+		}
+		pKey->m_strName = pKeyName;
+		//成功添加 key & keyName
+	}
+	pKeyValue = strdup(pValue);
+	if (NULL == pKeyValue)
+	{
+		if (pKeyName != NULL)
+		{
+			free(pKeyName);
+			pKeyName = NULL;
+		}
+		return -1;	//释放 keyName
+	}
+	if (pKey->m_strValue != NULL)	//原key有值
+	{
+		if ( (strlen(pKey->m_strValue) == strlen(pKeyValue)) 
+			&& (0 == memcmp(pKey->m_strValue, pKeyValue, strlen(pKeyValue))) ) //内容一致
+		{
+			free(pKeyValue);
+			pKeyValue = NULL;
+			return 0;
+		}
+		//释放key值原占有的内存
+		free(pKey->m_strValue);
+		pKey->m_strValue = NULL;
+	}
+	pKey->m_strValue = pKeyValue;
+	m_iCfgDataChanged = 1;
+	return (int) 0;
+}
+
 int CConfig::GetValue(const char *pszSection, const char *pszKey, char* pStr, int strLen)
 {
 	char *ret;
@@ -658,18 +756,14 @@ int CConfig::GetValue(const char *pszSection, const char *pszKey, char* pStr, in
 	char szDefault[51];
 	int nResult = 0;
 	int len = strLen > 50 ? 50 : strLen;
-
 	sprintf(szDefault, "%d", nResult);
-
 	//获取key的字符串值
 	ret = GetValue(pszSection, pszKey, szDefault, szBuff, 50);
 	if (ret == NULL)
 	{
 		return nResult;			//nDefault
 	}
-
 	strncpy(pStr, szBuff, len);
-
 	return nResult;
 }
 
@@ -684,17 +778,120 @@ char *CConfig::GetValue(const char *pszSection, const char *pszKey, const char *
 
 CConfig::CConfig():hCfg(NULL), m_strFile(NULL), m_pSection(NULL), m_nSectionCount(0), m_nSectionAlloced(0)
 {
+	m_iCfgDataChanged = 0;
+	//创建线程
+	if(!m_SaveFileThread)
+	{
+		int ret = 0;
+		ret = pthread_create(&m_SaveFileThread, NULL, Fnx_SaveFileThread, this);
+		if (ret < 0)
+		{
+			PAR_ERROR("pthread_create<Fnx_SaveFileThread> failed(%d)\n", ret);
+		}
+	}
 }
 
-inline int CConfig::Lock()
+void *CConfig::Fnx_SaveFileThread(void *lParam)
 {
-	return pthread_mutex_lock(&m_mtxConfig);
+	int ret = 0;
+	CConfig *pNTP = (CConfig *) lParam;
+	while (1)
+	{
+		pNTP->CheckIfNeedSaveFile();
+		sleep(1);				//一秒检测一次
+	}
+	return NULL;
 }
 
-inline int CConfig::Unlock()
+void CConfig::CheckIfNeedSaveFile()
 {
-	return pthread_mutex_unlock(&m_mtxConfig);
+	int ret = 0;
+	int ifSaveFile = 0;
+	LockSave();
+	if (m_iCfgDataChanged)
+	{
+		ifSaveFile = 1;
+	}
+	UnlockSave();
+	
+	if(ifSaveFile)
+	{
+		ret = SaveFileReal();
+		if(ret)
+		{
+			printf("%s:%d, SaveFileReal fail ret=%d!\n", __FUNCTION__, 
+			__LINE__, ret);
+		}
+	}
+
 }
+
+//存在不安全的现象
+int CConfig::SaveFileReal()
+{
+	// TODO: Add your specialized code here.
+	int nResult = -1;
+	LockSave();
+	nResult = SaveIniFile(m_strFile);
+	if (0 == nResult)
+	{
+		m_iCfgDataChanged = 0;	//保存成功就清零
+	}
+	UnlockSave();
+
+	return (int) nResult;
+}
+
+
+int CConfig::SaveIniFile(const char *pszFileName)
+{
+	if ((NULL == pszFileName) || (0 == strlen(pszFileName)))
+	{
+		//写调试日志,错误的参数
+		PAR_ERROR("Invalid Parameter, pszFileName = NULL");
+		return -1;
+	}	
+	int i = 0;
+	FILE *fp = NULL;
+	int ret = 0;
+
+	fp = fopen(pszFileName, "w+");
+	if (NULL == fp)
+	{
+		//写系统日志,文件打开失败
+		PAR_ERROR("Open File %s Failed\n", pszFileName);
+		return -1;
+	}
+	for (i = 0; i < m_nSectionCount; i++)
+	{
+		tagSection *pSect = m_pSection + i;
+		int j;
+
+		ret = fprintf(fp, "\n[%s]\n", pSect->m_strName);
+		if (ret < 0)
+		{
+			fclose(fp);
+			unlink(pszFileName);
+			return -1;
+		}
+
+		for (j = 0; j < pSect->m_nKeyCount; j++)
+		{
+			ret = fprintf(fp, "%s=%s\n", pSect->m_pKeyHead[j].m_strName, pSect->m_pKeyHead[j].m_strValue);
+			if (ret < 0)
+			{
+				fclose(fp);
+				unlink(pszFileName);
+				return -1;
+			}
+		}
+	}
+	//同步刷新
+	fflush(fp);
+	fclose(fp);
+	return (int) 0;
+}
+
 
 //获取 pValue 已经拷贝了
 char *CConfig::InternalGetValue(const char *pszSection, const char *pszKey, const char *pszDefault, char *pValue, int nSize)
@@ -725,7 +922,7 @@ char *CConfig::InternalGetValue(const char *pszSection, const char *pszKey, cons
 	
 	pKey = pSection->SearchKey(pszKey);
 
-	//没找到key添加一个key
+	//没找到key添加一个keyss
 	char *pKeyName = NULL;
 	char *pKeyValue = NULL;
 
@@ -778,7 +975,6 @@ char *CConfig::InternalGetValue(const char *pszSection, const char *pszKey, cons
 		pResult = pValue;
 	}
 	//PAR_DBG("Get pResult:%s\n", pResult);
-
 	return pResult;
 }
 
@@ -833,15 +1029,34 @@ CConfig::tagSection * CConfig::InsertSection()
 	tagSection *pSection = m_pSection + m_nSectionCount - 1;
 
 	//设置初始值,避免错误的读写内存
-	pEndSection->m_strName = pSection->m_strName;
-	pEndSection->m_nKeyCount = pSection->m_nKeyCount;
-	pEndSection->m_pKeyHead = pSection->m_pKeyHead;
-	pEndSection->m_nKeyAlloced = pSection->m_nKeyAlloced;
+	pEndSection->m_strName = pSection->m_strName;		
+	pEndSection->m_nKeyCount = pSection->m_nKeyCount;	
+	pEndSection->m_pKeyHead = pSection->m_pKeyHead;			
+	pEndSection->m_nKeyAlloced = pSection->m_nKeyAlloced;		
 
 	pSection->m_strName = NULL;
 	pSection->m_nKeyCount = 0;
 	pSection->m_pKeyHead = NULL;
 	pSection->m_nKeyAlloced = 0;
-	//cout << "Section Count " << m_nSectionCount << endl;
 	return pSection;
+} 
+
+inline int CConfig::LockSave()
+{
+	return pthread_mutex_lock(&m_mtxSaveFile);
+}
+
+inline int CConfig::UnlockSave()
+{
+	return pthread_mutex_unlock(&m_mtxSaveFile);
+}
+
+inline int CConfig::Lock()
+{
+	return pthread_mutex_lock(&m_mtxConfig);
+}
+
+inline int CConfig::Unlock()
+{
+	return pthread_mutex_unlock(&m_mtxConfig);
 }

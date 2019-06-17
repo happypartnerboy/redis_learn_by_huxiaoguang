@@ -20,8 +20,32 @@ public:
 	//直接进行移植
 	//获取字符串
 	int GetValue(const char *pszSection, const char *pszKey, char* pStr, int strLen);
+	
 
+	//!\brief   设置配置参数
+	//!\param   pszSection      区段名
+	//!\param   pszKey          关键字名
+	//!\param   nValue          整形参数值
+	//!\return  0表示成功，其它为错误码
+	int SetValue(const char *pszSection, const char *pszKey, int nValue);
+
+	//!\brief   设置配置参数
+	//!\param   pszSection      区段名
+	//!\param   pszKey          关键字名
+	//!\param   pValue          字符串型参数值
+	//!\return  0表示成功，其它为错误码
+	int SetValue(const char *pszSection, const char *pszKey, const char *pValue);
+
+	//线程的保存方式
+	static void *Fnx_SaveFileThread(void *lParam);
+
+	//是否需要保存
+	void CheckIfNeedSaveFile();
+	
 private:
+	int SaveFileReal();
+	int SaveIniFile(const char *pszFileName);
+	int InternalSetValue(const char *pszSection, const char *pszKey, const char *pValue);
 	//!\brief 读取一个section
 	//!\param fp 文件指针
 	//!\param pSect section指针
@@ -77,15 +101,21 @@ private:
 
 	static int Unlock();
 
+	static int LockSave();
+
+	static int UnlockSave();
+
 private:
 	HANDLE hCfg;
-	int m_nCurrentLine;				//当前行号
-	char * m_strFile  ;				//文件名
-	tagSection *m_pSection;			//section 
-	int m_nSectionCount;			//section 大小
-	int m_nSectionAlloced;			//已经分配的内存空间
-	int m_iCfgDataChanged;		//保存到文件中
-	static pthread_mutex_t m_mtxConfig; 	//互斥锁
-	
+	int m_nCurrentLine;						//当前行号
+	char * m_strFile  ;						//文件名
+	tagSection *m_pSection;					//section 
+	int m_nSectionCount;					//section 大小
+	int m_nSectionAlloced;					//已经分配的内存空间
+	int m_iCfgDataChanged;					//保存到文件中
+	static pthread_mutex_t m_mtxConfig;		//互斥锁
+	static pthread_t m_SaveFileThread;
+	static pthread_mutex_t m_mtxSaveFile;
+
 };
 #endif
