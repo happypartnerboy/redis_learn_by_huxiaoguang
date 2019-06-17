@@ -43,6 +43,7 @@ public:
 	void CheckIfNeedSaveFile();
 	
 private:
+	int SaveFile();
 	int SaveFileReal();
 	int SaveIniFile(const char *pszFileName);
 	int InternalSetValue(const char *pszSection, const char *pszKey, const char *pValue);
@@ -112,7 +113,13 @@ private:
 	tagSection *m_pSection;					//section 
 	int m_nSectionCount;					//section 大小
 	int m_nSectionAlloced;					//已经分配的内存空间
-	int m_iCfgDataChanged;					//保存到文件中
+
+
+	int m_iCfgDataChanged;					//数据发生改变的时候
+	int m_nNeedSaveFileFlag;				//是否需要保存,调用save置一，否清零
+	int m_ifSaveSoon;						//保存时  1 立即保存模式   0 异步保存模式
+
+
 	static pthread_mutex_t m_mtxConfig;		//互斥锁
 	static pthread_t m_SaveFileThread;
 	static pthread_mutex_t m_mtxSaveFile;

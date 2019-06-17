@@ -808,10 +808,13 @@ void CConfig::CheckIfNeedSaveFile()
 	int ret = 0;
 	int ifSaveFile = 0;
 	LockSave();
-	if (m_iCfgDataChanged)
+	ifSaveFile = m_nNeedSaveFileFlag; 	// 是否需要保存(save的时候)
+	if (!m_iCfgDataChanged)
 	{
-		ifSaveFile = 1;
+		ifSaveFile = 0;
 	}
+	m_nNeedSaveFileFlag = 0; 	// 是否需要保存(save的时候)
+
 	UnlockSave();
 	
 	if(ifSaveFile)
@@ -824,6 +827,17 @@ void CConfig::CheckIfNeedSaveFile()
 		}
 	}
 
+}
+
+int CConfig::SaveFile()
+{
+	// TODO: Add your specialized code here.
+	int nResult = -1;
+	LockSave();
+	m_nNeedSaveFileFlag = 1;	//异步的方式
+	UnlockSave();
+	nResult = 0;
+	return nResult;
 }
 
 //存在不安全的现象
